@@ -46,11 +46,13 @@ public class JobFailMonitorHelper {
 				while (!toStop) {
 					try {
 
+						// 查询所有失败的日志信息
 						List<Long> failLogIds = XxlJobAdminConfig.getAdminConfig().getXxlJobLogDao().findFailJobLogIds(1000);
 						if (failLogIds!=null && !failLogIds.isEmpty()) {
 							for (long failLogId: failLogIds) {
 
 								// lock log
+								// 告警状态：0-默认、-1=锁定状态、1-无需告警、2-告警成功、3-告警失败 把执行任务失败的日志状态从 默认 置为 锁定状态
 								int lockRet = XxlJobAdminConfig.getAdminConfig().getXxlJobLogDao().updateAlarmStatus(failLogId, 0, -1);
 								if (lockRet < 1) {
 									continue;
@@ -60,6 +62,7 @@ public class JobFailMonitorHelper {
 
 								// 1、fail retry monitor
 								if (log.getExecutorFailRetryCount() > 0) {
+									// 如果当前任务日志失败重试次数大于0 ，则重新触发 trigger 调度任务，并且重试次数减一，将当前日志的重试TriggerMsg更新
 									JobTriggerPoolHelper.trigger(log.getJobId(), TriggerTypeEnum.RETRY, (log.getExecutorFailRetryCount()-1), log.getExecutorShardingParam(), null);
 									String retryMsg = "<br><br><span style=\"color:#F39C12;\" > >>>>>>>>>>>"+ I18nUtil.getString("jobconf_trigger_type_retry") +"<<<<<<<<<<< </span><br>";
 									log.setTriggerMsg(log.getTriggerMsg() + retryMsg);
@@ -71,6 +74,7 @@ public class JobFailMonitorHelper {
 								if (info!=null && info.getAlarmEmail()!=null && info.getAlarmEmail().trim().length()>0) {
 									boolean alarmResult = true;
 									try {
+										// 这里发报警邮件
 										alarmResult = failAlarm(info, log);
 									} catch (Exception e) {
 										alarmResult = false;
@@ -81,10 +85,12 @@ public class JobFailMonitorHelper {
 									newAlarmStatus = 1;
 								}
 
+								// 然后更新日志告警状态
 								XxlJobAdminConfig.getAdminConfig().getXxlJobLogDao().updateAlarmStatus(failLogId, -1, newAlarmStatus);
 							}
 						}
 
+						// 每10秒来一次
 						TimeUnit.SECONDS.sleep(10);
 					} catch (Exception e) {
 						if (!toStop) {

@@ -45,15 +45,20 @@ public class XxlJobScheduler implements InitializingBean, DisposableBean {
         initI18n();
 
         // admin registry monitor run
+        // 启一个守护线程在后台一直while true,每30S转一次，用于查看registry表中是否有新加入的执行器，如果有就取出更新group执行器的address_list
         JobRegistryMonitorHelper.getInstance().start();
 
         // admin monitor run
+        // 启一个守护线程在后台一直while true,每10S转一次，用于查看日志表，拿出所有的失败日志，若存在剩余重试次数大于1的，就触发重试调度，并修改当前的日志信息
+        // 若产生该日志的任务存在报警邮件信息，则发出报警邮件并更新日志状态
         JobFailMonitorHelper.getInstance().start();
 
         // admin-server
+        // 变成服务提供者，并且起一个默认的 7080 端口
         initRpcProvider();
 
         // start-schedule
+        // 启两个个守护线程，专门处理数据库job已开始状态的任务调度
         JobScheduleHelper.getInstance().start();
 
         logger.info(">>>>>>>>> init xxl-job admin success.");
