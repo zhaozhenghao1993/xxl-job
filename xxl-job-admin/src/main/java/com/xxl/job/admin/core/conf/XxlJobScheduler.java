@@ -54,7 +54,7 @@ public class XxlJobScheduler implements InitializingBean, DisposableBean {
         JobFailMonitorHelper.getInstance().start();
 
         // admin-server
-        // 变成服务提供者，并且起一个默认的 7080 端口
+        // 将调度中心变成服务提供者，并且起一个默认的 7080 端口
         initRpcProvider();
 
         // start-schedule
@@ -94,7 +94,7 @@ public class XxlJobScheduler implements InitializingBean, DisposableBean {
     // ---------------------- admin rpc provider (no server version) ----------------------
     private static ServletServerHandler servletServerHandler;
     private void initRpcProvider(){
-        // init
+        // init API方式创建“服务提供者”
         XxlRpcProviderFactory xxlRpcProviderFactory = new XxlRpcProviderFactory();
         xxlRpcProviderFactory.initConfig(
                 NetEnum.NETTY_HTTP,
@@ -106,6 +106,7 @@ public class XxlJobScheduler implements InitializingBean, DisposableBean {
                 null);
 
         // add services
+        // 将 AdminBizImpl 暴露出去
         xxlRpcProviderFactory.addService(AdminBiz.class.getName(), null, XxlJobAdminConfig.getAdminConfig().getAdminBiz());
 
         // servlet handler
@@ -135,6 +136,7 @@ public class XxlJobScheduler implements InitializingBean, DisposableBean {
         }
 
         // set-cache
+        // 这里能根据 address 和 ExecutorBiz.class 获取远端 ExecutorBiz 执行器实例
         executorBiz = (ExecutorBiz) new XxlRpcReferenceBean(
                 NetEnum.NETTY_HTTP,
                 Serializer.SerializeEnum.HESSIAN.getSerializer(),
@@ -148,6 +150,7 @@ public class XxlJobScheduler implements InitializingBean, DisposableBean {
                 null,
                 null).getObject();
 
+        // 将 address 这个执行器地址的执行器 实例 加入缓存
         executorBizRepository.put(address, executorBiz);
         return executorBiz;
     }

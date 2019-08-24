@@ -48,7 +48,7 @@ public class JobTriggerPoolHelper {
 
 
     // job timeout count
-    private volatile long minTim = System.currentTimeMillis()/60000;     // ms > min
+    private volatile long minTim = System.currentTimeMillis()/60000;     // ms > min 得到当前的分钟
     private volatile ConcurrentMap<Integer, AtomicInteger> jobTimeoutCountMap = new ConcurrentHashMap<>();
 
 
@@ -60,7 +60,7 @@ public class JobTriggerPoolHelper {
         // choose thread pool
         ThreadPoolExecutor triggerPool_ = fastTriggerPool;
         AtomicInteger jobTimeoutCount = jobTimeoutCountMap.get(jobId);
-        if (jobTimeoutCount!=null && jobTimeoutCount.get() > 10) {      // job-timeout 10 times in 1 min
+        if (jobTimeoutCount!=null && jobTimeoutCount.get() > 10) {      // job-timeout 10 times in 1 min 调度此任务在一分钟超时10就更换 slowTriggerPool
             triggerPool_ = slowTriggerPool;
         }
 
@@ -72,13 +72,14 @@ public class JobTriggerPoolHelper {
                 long start = System.currentTimeMillis();
 
                 try {
-                    // do trigger
+                    // do trigger 触发调度任务
                     XxlJobTrigger.trigger(jobId, triggerType, failRetryCount, executorShardingParam, executorParam);
                 } catch (Exception e) {
                     logger.error(e.getMessage(), e);
                 } finally {
 
                     // check timeout-count-map
+                    // 触发任务后跟触发前不是在同一分钟，就清除 在同一分钟超时次数
                     long minTim_now = System.currentTimeMillis()/60000;
                     if (minTim != minTim_now) {
                         minTim = minTim_now;
@@ -87,7 +88,12 @@ public class JobTriggerPoolHelper {
 
                     // incr timeout-count-map
                     long cost = System.currentTimeMillis()-start;
-                    if (cost > 500) {       // ob-timeout threshold 500ms
+                    if (cost > 500) {       // ob-timeout threshold 500ms 如果超时500ms
+                        // put与putIfAbsent区别:
+                        // put在放入数据时，如果放入数据的key已经存在与Map中，最后放入的数据会覆盖之前存在的数据，
+                        // 而putIfAbsent在放入数据时，如果存在重复的key，那么putIfAbsent不会放入值。
+                        // 如果传入key对应的value已经存在，就返回存在的value，不进行替换。如果不存在，就添加key和value，返回null
+                        // 如果之前不存在就 存个1 ，如果存在 就+1
                         AtomicInteger timeoutCount = jobTimeoutCountMap.putIfAbsent(jobId, new AtomicInteger(1));
                         if (timeoutCount != null) {
                             timeoutCount.incrementAndGet();

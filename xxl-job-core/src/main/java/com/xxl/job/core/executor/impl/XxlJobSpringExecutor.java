@@ -22,6 +22,7 @@ public class XxlJobSpringExecutor extends XxlJobExecutor implements ApplicationC
     public void start() throws Exception {
 
         // init JobHandler Repository
+        // 初始化 JobHandler 仓库
         initJobHandlerRepository(applicationContext);
 
         // refresh GlueFactory
@@ -38,16 +39,21 @@ public class XxlJobSpringExecutor extends XxlJobExecutor implements ApplicationC
         }
 
         // init job handler action
+        // 获取被 JobHandler 注解的 bean
         Map<String, Object> serviceBeanMap = applicationContext.getBeansWithAnnotation(JobHandler.class);
 
         if (serviceBeanMap!=null && serviceBeanMap.size()>0) {
             for (Object serviceBean : serviceBeanMap.values()) {
+                // 如果继承 IJobHandler
                 if (serviceBean instanceof IJobHandler){
+                    // 获取 JobHandler 注解的 value
                     String name = serviceBean.getClass().getAnnotation(JobHandler.class).value();
                     IJobHandler handler = (IJobHandler) serviceBean;
+                    // 在缓存里测试 这个 handler name 是否冲突
                     if (loadJobHandler(name) != null) {
                         throw new RuntimeException("xxl-job jobhandler naming conflicts.");
                     }
+                    // 缓存该实例和name
                     registJobHandler(name, handler);
                 }
             }

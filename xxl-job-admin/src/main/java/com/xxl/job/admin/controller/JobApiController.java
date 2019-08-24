@@ -24,6 +24,13 @@ public class JobApiController implements InitializingBean {
 
     }
 
+    /**
+     * 所有执行器 通过rpc获取 AdminBizImpl 时 回调
+     * @param request
+     * @param response
+     * @throws IOException
+     * @throws ServletException
+     */
     @RequestMapping(AdminBiz.MAPPING)
     @PermissionLimit(limit=false)
     public void api(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {

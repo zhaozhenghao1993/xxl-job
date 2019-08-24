@@ -39,7 +39,7 @@ public class XxlJobExecutor  {
     private int port;
     private String accessToken;
     private String logPath;
-    private int logRetentionDays;
+    private int logRetentionDays; // 日志保留天数
 
     public void setAdminAddresses(String adminAddresses) {
         this.adminAddresses = adminAddresses;
@@ -68,21 +68,26 @@ public class XxlJobExecutor  {
     public void start() throws Exception {
 
         // init logpath
+        // 初始化日志输出地址
         XxlJobFileAppender.initLogPath(logPath);
 
         // init invoker, admin-client
+        // 去 调度中心 获取 AdminBizImpl 并加入缓存
         initAdminBizList(adminAddresses, accessToken);
 
 
         // init JobLogFileCleanThread
+        // 初始化日志
         JobLogFileCleanThread.getInstance().start(logRetentionDays);
 
         // init TriggerCallbackThread
+        // 触发回调的线程
         TriggerCallbackThread.getInstance().start();
 
         // init executor-server
         port = port>0?port: NetUtil.findAvailablePort(9999);
         ip = (ip!=null&&ip.trim().length()>0)?ip: IpUtil.getIp();
+        // 将执行器自己变为服务提供者
         initRpcProvider(ip, port, appName, accessToken);
     }
     public void destroy(){
@@ -119,8 +124,10 @@ public class XxlJobExecutor  {
             for (String address: adminAddresses.trim().split(",")) {
                 if (address!=null && address.trim().length()>0) {
 
+                    // 拼接上 /api
                     String addressUrl = address.concat(AdminBiz.MAPPING);
 
+                    // 去 调度中心 拿 各个调度中心的 AdminBizImpl 实例
                     AdminBiz adminBiz = (AdminBiz) new XxlRpcReferenceBean(
                             NetEnum.NETTY_HTTP,
                             serializer,
@@ -138,6 +145,7 @@ public class XxlJobExecutor  {
                     if (adminBizList == null) {
                         adminBizList = new ArrayList<AdminBiz>();
                     }
+                    // 加入缓存
                     adminBizList.add(adminBiz);
                 }
             }
@@ -165,13 +173,20 @@ public class XxlJobExecutor  {
     private void initRpcProvider(String ip, int port, String appName, String accessToken) throws Exception {
 
         // init, provider factory
+        // 初始化执行器服务
         String address = IpUtil.getIpPort(ip, port);
         Map<String, String> serviceRegistryParam = new HashMap<String, String>();
         serviceRegistryParam.put("appName", appName);
         serviceRegistryParam.put("address", address);
 
         xxlRpcProviderFactory = new XxlRpcProviderFactory();
-        xxlRpcProviderFactory.initConfig(NetEnum.NETTY_HTTP, Serializer.SerializeEnum.HESSIAN.getSerializer(), ip, port, accessToken, ExecutorServiceRegistry.class, serviceRegistryParam);
+        xxlRpcProviderFactory.initConfig(NetEnum.NETTY_HTTP,
+                Serializer.SerializeEnum.HESSIAN.getSerializer(),
+                ip,
+                port,
+                accessToken,
+                ExecutorServiceRegistry.class, // 服务注册中心，可选范围：LocalServiceRegistry.class、ZkServiceRegistry.class；支持灵活自由扩展；
+                serviceRegistryParam); // 服务注册中心启动参数，参数说明可参考各注册中心实现的 start() 的方法注释；
 
         // add services
         xxlRpcProviderFactory.addService(ExecutorBiz.class.getName(), null, new ExecutorBizImpl());
@@ -181,16 +196,22 @@ public class XxlJobExecutor  {
 
     }
 
+    /**
+     * 跟踪 XxlRpcProviderFactory 得知，这里重写的 start() 和 stop() 都会在
+     * XxlRpcProviderFactory.start()和stop()时调用，而启动和销毁跟随Bean创建注册方法
+     */
     public static class ExecutorServiceRegistry extends ServiceRegistry {
 
         @Override
         public void start(Map<String, String> param) {
             // start registry
+            // 项目启动时执行，此处会起个线程死循环一直给调度中心 新增或更新 registry表，更新调度器，做一个心跳，让调度中心扫描
             ExecutorRegistryThread.getInstance().start(param.get("appName"), param.get("address"));
         }
         @Override
         public void stop() {
             // stop registry
+            // 项目停止时执行，此处会将线程跳出死循环并删除registry表对应的调度器
             ExecutorRegistryThread.getInstance().toStop();
         }
 

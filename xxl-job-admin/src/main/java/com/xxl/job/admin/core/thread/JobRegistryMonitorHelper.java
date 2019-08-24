@@ -112,8 +112,10 @@ public class JobRegistryMonitorHelper {
 	public void toStop(){
 		toStop = true;
 		// interrupt and wait
+		// 设置一个 中断状态
 		registryThread.interrupt();
 		try {
+			// 让“主线程”等待“子线程”结束之后才能继续运行。
 			registryThread.join();
 		} catch (InterruptedException e) {
 			logger.error(e.getMessage(), e);

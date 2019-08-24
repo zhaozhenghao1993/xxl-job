@@ -66,10 +66,17 @@ public class ExecutorBizImpl implements ExecutorBiz {
         return new ReturnT<LogResult>(logResult);
     }
 
+    /**
+     * 调度中心远程调用，触发一次任务调度
+     * @param triggerParam
+     * @return
+     */
     @Override
     public ReturnT<String> run(TriggerParam triggerParam) {
         // load old：jobHandler + jobThread
+        // 从获取中获取 JobThread 线程
         JobThread jobThread = XxlJobExecutor.loadJobThread(triggerParam.getJobId());
+        // 如果
         IJobHandler jobHandler = jobThread!=null?jobThread.getHandler():null;
         String removeOldReason = null;
 

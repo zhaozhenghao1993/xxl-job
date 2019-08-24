@@ -50,6 +50,7 @@ public class JobThread extends Thread{
 	}
 
     /**
+	 * 加入一个新任务到列队
      * new trigger to queue
      *
      * @param triggerParam
@@ -57,17 +58,20 @@ public class JobThread extends Thread{
      */
 	public ReturnT<String> pushTriggerQueue(TriggerParam triggerParam) {
 		// avoid repeat
+		// 看这个set里面是否有正准备在触发的任务，存的是任务日志id,避免对同一个TRIGGER_LOG_ID重复触发
 		if (triggerLogIdSet.contains(triggerParam.getLogId())) {
 			logger.info(">>>>>>>>>>> repeate trigger job, logId:{}", triggerParam.getLogId());
 			return new ReturnT<String>(ReturnT.FAIL_CODE, "repeate trigger job, logId:" + triggerParam.getLogId());
 		}
 
+		// 缓存记录日志id  列队记录触发任务信息
 		triggerLogIdSet.add(triggerParam.getLogId());
 		triggerQueue.add(triggerParam);
         return ReturnT.SUCCESS;
 	}
 
     /**
+	 * 干掉这个正在执行任务的线程
      * kill job thread
      *
      * @param stopReason
@@ -83,6 +87,7 @@ public class JobThread extends Thread{
 	}
 
     /**
+	 * 检查当前是否有任务正在执行
      * is running job
      * @return
      */
@@ -94,6 +99,7 @@ public class JobThread extends Thread{
 	public void run() {
 
     	// init
+		// 先执行初始化
     	try {
 			handler.init();
 		} catch (Throwable e) {
@@ -101,21 +107,29 @@ public class JobThread extends Thread{
 		}
 
 		// execute
+		// 执行任务
 		while(!toStop){
+    		// 重置该线程运行状态
 			running = false;
+			// 该线程启动后，记录次数，如果试了30次还是没有在队列中接收到triggerParam，就删除该线程
 			idleTimes++;
 
             TriggerParam triggerParam = null;
             ReturnT<String> executeResult = null;
             try {
 				// to check toStop signal, we need cycle, so wo cannot use queue.take(), instand of poll(timeout)
+				// poll 若列队为空，就返回空
 				triggerParam = triggerQueue.poll(3L, TimeUnit.SECONDS);
+				// 如果此时列队中存在需要执行的任务
 				if (triggerParam!=null) {
+					// 记录当前线程 正在执行调度任务
 					running = true;
 					idleTimes = 0;
+					// 删除set中存过的日志id,表示当前这个任务正在被消费
 					triggerLogIdSet.remove(triggerParam.getLogId());
 
 					// log filename, like "logPath/yyyy-MM-dd/9999.log"
+					// 记录日志
 					String logFileName = XxlJobFileAppender.makeLogFileName(new Date(triggerParam.getLogDateTim()), triggerParam.getLogId());
 					XxlJobFileAppender.contextHolder.set(logFileName);
 					ShardingUtil.setShardingVo(new ShardingUtil.ShardingVO(triggerParam.getBroadcastIndex(), triggerParam.getBroadcastTotal()));
@@ -123,11 +137,14 @@ public class JobThread extends Thread{
 					// execute
 					XxlJobLogger.log("<br>----------- xxl-job job execute start -----------<br>----------- Param:" + triggerParam.getExecutorParams());
 
+					// 如果调度中心传来的参数，被执行的任务存在超时时间
 					if (triggerParam.getExecutorTimeout() > 0) {
-						// limit timeout
+						// limit timeout 限制超时
 						Thread futureThread = null;
 						try {
 							final TriggerParam triggerParamTmp = triggerParam;
+							// 可以看出RunnableFuture继承了Runnable接口和Future接口，而FutureTask实现了RunnableFuture接口。
+							// 所以它既可以作为Runnable被线程执行，又可以作为Future得到Callable的返回值。
 							FutureTask<ReturnT<String>> futureTask = new FutureTask<ReturnT<String>>(new Callable<ReturnT<String>>() {
 								@Override
 								public ReturnT<String> call() throws Exception {
@@ -137,6 +154,7 @@ public class JobThread extends Thread{
 							futureThread = new Thread(futureTask);
 							futureThread.start();
 
+							// 所以这里 FutureTask 的 get方法为阻塞方法，定义超时时间，超过超时时间还没有获取到结果，则说明超时，抛出异常
 							executeResult = futureTask.get(triggerParam.getExecutorTimeout(), TimeUnit.SECONDS);
 						} catch (TimeoutException e) {
 
@@ -145,16 +163,20 @@ public class JobThread extends Thread{
 
 							executeResult = new ReturnT<String>(IJobHandler.FAIL_TIMEOUT.getCode(), "job execute timeout ");
 						} finally {
+							// 最终设置中断标记
 							futureThread.interrupt();
 						}
 					} else {
 						// just execute
+						// 不存在超时时间就直接执行
 						executeResult = handler.execute(triggerParam.getExecutorParams());
 					}
 
 					if (executeResult == null) {
+						// 如果最后调用handler.execute 没有返回结果，则说明任务执行失败
 						executeResult = IJobHandler.FAIL;
 					} else {
+						// 如果任务结果Msg太长就截取
 						executeResult.setMsg(
 								(executeResult!=null&&executeResult.getMsg()!=null&&executeResult.getMsg().length()>50000)
 										?executeResult.getMsg().substring(0, 50000).concat("...")
@@ -164,8 +186,9 @@ public class JobThread extends Thread{
 					XxlJobLogger.log("<br>----------- xxl-job job execute end(finish) -----------<br>----------- ReturnT:" + executeResult);
 
 				} else {
+					// 该线程启动后，记录次数，如果试了30次还是没有在队列中接收到triggerParam，就删除该线程
 					if (idleTimes > 30) {
-						XxlJobExecutor.removeJobThread(jobId, "excutor idel times over limit.");
+						XxlJobExecutor.removeJobThread(jobId, "executor idel times over limit.");
 					}
 				}
 			} catch (Throwable e) {
@@ -180,12 +203,17 @@ public class JobThread extends Thread{
 
 				XxlJobLogger.log("<br>----------- JobThread Exception:" + errorMsg + "<br>----------- xxl-job job execute end(error) -----------");
 			} finally {
+            	// 存在调度参数，则说明此次是一次正常的调度执行，将会回调发送结果
                 if(triggerParam != null) {
+                	// 执行结束后
                     // callback handler info
                     if (!toStop) {
+                    	// 正常执行完毕，将任务日志id,任务执行完成时间，任务执行结果，加入到回调 调度中心结果方法的 列队中，
+						// 等待TriggerCallbackThread 中的 triggerCallbackThread 线程回调 调度中心
                         // commonm
                         TriggerCallbackThread.pushCallBack(new HandleCallbackParam(triggerParam.getLogId(), triggerParam.getLogDateTim(), executeResult));
                     } else {
+                    	// 这里是被非正常强制关闭的任务信息，同样加入回调列队
                         // is killed
                         ReturnT<String> stopResult = new ReturnT<String>(ReturnT.FAIL_CODE, stopReason + " [job running，killed]");
                         TriggerCallbackThread.pushCallBack(new HandleCallbackParam(triggerParam.getLogId(), triggerParam.getLogDateTim(), stopResult));
@@ -194,7 +222,10 @@ public class JobThread extends Thread{
             }
         }
 
+        // 到达这个地方，说明任务被强制停止了
+
 		// callback trigger request in queue
+		// 如果此时
 		while(triggerQueue !=null && triggerQueue.size()>0){
 			TriggerParam triggerParam = triggerQueue.poll();
 			if (triggerParam!=null) {

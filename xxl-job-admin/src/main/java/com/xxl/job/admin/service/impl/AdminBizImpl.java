@@ -23,6 +23,7 @@ import java.util.Date;
 import java.util.List;
 
 /**
+ * 由执行器调度通过rpc调度
  * @author xuxueli 2017-07-27 21:54:20
  */
 @Service
@@ -37,8 +38,14 @@ public class AdminBizImpl implements AdminBiz {
     private XxlJobRegistryDao xxlJobRegistryDao;
 
 
+    /**
+     * 任务执行完成后回调
+     * @param callbackParamList
+     * @return
+     */
     @Override
     public ReturnT<String> callback(List<HandleCallbackParam> callbackParamList) {
+        // 遍历所有的任务执行结果
         for (HandleCallbackParam handleCallbackParam: callbackParamList) {
             ReturnT<String> callbackResult = callback(handleCallbackParam);
             logger.debug(">>>>>>>>> JobApiController.callback {}, handleCallbackParam={}, callbackResult={}",
@@ -55,10 +62,13 @@ public class AdminBizImpl implements AdminBiz {
             return new ReturnT<String>(ReturnT.FAIL_CODE, "log item not found.");
         }
         if (log.getHandleCode() > 0) {
+            // 这里如果大于0 说明这个日志已经执行过了，回调过了
+            // 避免重复回调、触发子作业等
             return new ReturnT<String>(ReturnT.FAIL_CODE, "log repeate callback.");     // avoid repeat callback, trigger child job etc
         }
 
         // trigger success, to trigger child job
+        // 触发成功，去触发子任务
         String callbackMsg = null;
         if (IJobHandler.SUCCESS.getCode() == handleCallbackParam.getExecuteResult().getCode()) {
             XxlJobInfo xxlJobInfo = xxlJobInfoDao.loadById(log.getJobId());
@@ -92,6 +102,7 @@ public class AdminBizImpl implements AdminBiz {
         }
 
         // handle msg
+        // 执行结果信息
         StringBuffer handleMsg = new StringBuffer();
         if (log.getHandleMsg()!=null) {
             handleMsg.append(log.getHandleMsg()).append("<br>");
@@ -103,7 +114,7 @@ public class AdminBizImpl implements AdminBiz {
             handleMsg.append(callbackMsg);
         }
 
-        // success, save log
+        // success, save log 更新日志
         log.setHandleTime(new Date());
         log.setHandleCode(handleCallbackParam.getExecuteResult().getCode());
         log.setHandleMsg(handleMsg.toString());
@@ -121,6 +132,11 @@ public class AdminBizImpl implements AdminBiz {
         }
     }
 
+    /**
+     * 注册执行器
+     * @param registryParam
+     * @return
+     */
     @Override
     public ReturnT<String> registry(RegistryParam registryParam) {
         int ret = xxlJobRegistryDao.registryUpdate(registryParam.getRegistGroup(), registryParam.getRegistryKey(), registryParam.getRegistryValue());
@@ -130,6 +146,11 @@ public class AdminBizImpl implements AdminBiz {
         return ReturnT.SUCCESS;
     }
 
+    /**
+     * 删除执行器
+     * @param registryParam
+     * @return
+     */
     @Override
     public ReturnT<String> registryRemove(RegistryParam registryParam) {
         xxlJobRegistryDao.registryDelete(registryParam.getRegistGroup(), registryParam.getRegistryKey(), registryParam.getRegistryValue());
