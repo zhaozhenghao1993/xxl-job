@@ -154,6 +154,11 @@ public class JobLogController {
 		}
 	}
 
+	/**
+	 * 强制终止当前任务
+	 * @param id
+	 * @return
+	 */
 	@RequestMapping("/logKill")
 	@ResponseBody
 	public ReturnT<String> logKill(int id){
@@ -170,7 +175,9 @@ public class JobLogController {
 		// request of kill
 		ReturnT<String> runResult = null;
 		try {
+			// 根据 Address 获取当前执行器服务
 			ExecutorBiz executorBiz = XxlJobScheduler.getExecutorBiz(log.getExecutorAddress());
+			// 调用远程方法 com.xxl.job.core.biz.impl.ExecutorBizImpl kill
 			runResult = executorBiz.kill(jobInfo.getId());
 		} catch (Exception e) {
 			logger.error(e.getMessage(), e);

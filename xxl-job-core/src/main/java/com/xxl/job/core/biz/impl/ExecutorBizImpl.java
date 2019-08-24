@@ -48,8 +48,10 @@ public class ExecutorBizImpl implements ExecutorBiz {
     @Override
     public ReturnT<String> kill(int jobId) {
         // kill handlerThread, and create new one
+        // 从缓存中获取jobId对应 JobThread 执行线程
         JobThread jobThread = XxlJobExecutor.loadJobThread(jobId);
         if (jobThread != null) {
+            // 存在就把它删掉 根本不会停止业务任务
             XxlJobExecutor.removeJobThread(jobId, "scheduling center kill job.");
             return ReturnT.SUCCESS;
         }
@@ -74,22 +76,27 @@ public class ExecutorBizImpl implements ExecutorBiz {
     @Override
     public ReturnT<String> run(TriggerParam triggerParam) {
         // load old：jobHandler + jobThread
-        // 从获取中获取 JobThread 线程
+        // 从 缓存中获取对应任务id的 JobThread 线程，避免快速多次调度任务时重复创建线程，而且该线程会停留 (3 * 30)s
         JobThread jobThread = XxlJobExecutor.loadJobThread(triggerParam.getJobId());
-        // 如果
+        // 获取该线程中存在的 IJobHandler 执行器 handler
         IJobHandler jobHandler = jobThread!=null?jobThread.getHandler():null;
         String removeOldReason = null;
 
         // valid：jobHandler + jobThread
         GlueTypeEnum glueTypeEnum = GlueTypeEnum.match(triggerParam.getGlueType());
         if (GlueTypeEnum.BEAN == glueTypeEnum) {
+            // BEAN 类型
+
 
             // new jobhandler
+            // 根据执行器启动时 XxlJobSpringExecutor 中缓存的 JobHandler
             IJobHandler newJobHandler = XxlJobExecutor.loadJobHandler(triggerParam.getExecutorHandler());
 
-            // valid old jobThread
+            // valid old jobThread 验证老的 jobThread
+            // 如果该 任务执行线程还健在 但是 两个 jobHandler 实例不一样，说明有问题，就置空重新获取
             if (jobThread!=null && jobHandler != newJobHandler) {
                 // change handler, need kill old thread
+                // 原因就是 同一个 jobId 但是更换了 jobhandler
                 removeOldReason = "change jobhandler or glue type, and terminate the old job thread.";
 
                 jobThread = null;
@@ -97,9 +104,11 @@ public class ExecutorBizImpl implements ExecutorBiz {
             }
 
             // valid handler
+            // 如果该 任务执行线程还健在但是 jobHandler为空 或者 任务执行线程为空 或者 上面给置空，就让新从缓存中获取的 jobHandler 替换
             if (jobHandler == null) {
                 jobHandler = newJobHandler;
                 if (jobHandler == null) {
+                    // 如果获取不到就报错 任务触发失败 填写的执行器不存在
                     return new ReturnT<String>(ReturnT.FAIL_CODE, "job handler [" + triggerParam.getExecutorHandler() + "] not found.");
                 }
             }
@@ -149,14 +158,19 @@ public class ExecutorBizImpl implements ExecutorBiz {
         }
 
         // executor block strategy
+        // 阻塞处理策略
         if (jobThread != null) {
+            // 如果 该执行线程不为空
             ExecutorBlockStrategyEnum blockStrategy = ExecutorBlockStrategyEnum.match(triggerParam.getExecutorBlockStrategy(), null);
             if (ExecutorBlockStrategyEnum.DISCARD_LATER == blockStrategy) {
+                // 丢弃后续调度(从代码来看应该是，如果之前的调度还在执行，则丢弃掉后面触发的太快的任务)
                 // discard when running
+                // 当前有任务正在执行或者列队中存在准备调度的任务
                 if (jobThread.isRunningOrHasQueue()) {
                     return new ReturnT<String>(ReturnT.FAIL_CODE, "block strategy effect："+ExecutorBlockStrategyEnum.DISCARD_LATER.getTitle());
                 }
             } else if (ExecutorBlockStrategyEnum.COVER_EARLY == blockStrategy) {
+                // 覆盖之前的调度 (制空之前的线程，让重新创建)
                 // kill running jobThread
                 if (jobThread.isRunningOrHasQueue()) {
                     removeOldReason = "block strategy effect：" + ExecutorBlockStrategyEnum.COVER_EARLY.getTitle();
@@ -169,11 +183,13 @@ public class ExecutorBizImpl implements ExecutorBiz {
         }
 
         // replace thread (new or exists invalid)
+        // 替换新的 线程 (创建或替换无效的) 并且开始执行，开始让新的 jobThread 还是while，等待pushTriggerQueue
         if (jobThread == null) {
             jobThread = XxlJobExecutor.registJobThread(triggerParam.getJobId(), jobHandler, removeOldReason);
         }
 
         // push data to queue
+        // 往队列中存入 触发参数，此时任务开始执行，返回触发结果
         ReturnT<String> pushResult = jobThread.pushTriggerQueue(triggerParam);
         return pushResult;
     }

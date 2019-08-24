@@ -200,7 +200,7 @@ public class XxlJobTrigger {
         try {
             // 获取远程的执行器，就是获取对应 address 执行器的 com.xxl.job.core.biz.impl.ExecutorBizImpl
             ExecutorBiz executorBiz = XxlJobScheduler.getExecutorBiz(address);
-            // 调用远程执行器
+            // 调用远程执行器，返回调用触发任务动作的结果 一次调度触发动作结束
             runResult = executorBiz.run(triggerParam);
         } catch (Exception e) {
             logger.error(">>>>>>>>>>> xxl-job trigger error, please check if the executor[{}] is running.", address, e);

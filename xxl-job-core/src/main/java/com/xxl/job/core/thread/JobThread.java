@@ -118,7 +118,7 @@ public class JobThread extends Thread{
             ReturnT<String> executeResult = null;
             try {
 				// to check toStop signal, we need cycle, so wo cannot use queue.take(), instand of poll(timeout)
-				// poll 若列队为空，就返回空
+				// poll 每次在这里等三秒若列队为空，就返回空
 				triggerParam = triggerQueue.poll(3L, TimeUnit.SECONDS);
 				// 如果此时列队中存在需要执行的任务
 				if (triggerParam!=null) {
@@ -225,17 +225,20 @@ public class JobThread extends Thread{
         // 到达这个地方，说明任务被强制停止了
 
 		// callback trigger request in queue
-		// 如果此时
+		// 此时列队里还有调度请求，循环取出
 		while(triggerQueue !=null && triggerQueue.size()>0){
+			// 如果此时这个线程对象还添加了别的调度请求，就取出，
 			TriggerParam triggerParam = triggerQueue.poll();
 			if (triggerParam!=null) {
 				// is killed
+				// 并都回调告诉 调度中心 这些任务没有执行，任务此次调度列队已经被干掉了
 				ReturnT<String> stopResult = new ReturnT<String>(ReturnT.FAIL_CODE, stopReason + " [job not executed, in the job queue, killed.]");
 				TriggerCallbackThread.pushCallBack(new HandleCallbackParam(triggerParam.getLogId(), triggerParam.getLogDateTim(), stopResult));
 			}
 		}
 
 		// destroy
+		// 最后调用destroy
 		try {
 			handler.destroy();
 		} catch (Throwable e) {
