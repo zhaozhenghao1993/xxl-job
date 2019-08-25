@@ -109,6 +109,7 @@ public class JobThread extends Thread{
 		// execute
 		// 执行任务
 		while(!toStop){
+			System.out.println("当前任务线程triggerQueue队列中含有的需要调度的任务参数个数为==> " + triggerQueue.size());
     		// 重置该线程运行状态
 			running = false;
 			// 该线程启动后，记录次数，如果试了30次还是没有在队列中接收到triggerParam，就删除该线程

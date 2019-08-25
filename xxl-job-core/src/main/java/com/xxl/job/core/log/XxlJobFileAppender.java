@@ -17,6 +17,11 @@ public class XxlJobFileAppender {
 	
 	// for JobThread (support log for child thread of job handler)
 	//public static ThreadLocal<String> contextHolder = new ThreadLocal<String>();
+	// 子线程能拿到父线程在ThreadLocal存的值，原理为 在Thread thread = new MyThread();的时候
+	// 会将父线程存入到 inheritableThreadLocals 的值 复制一份到子 thread 实例中
+	// 所有当Thread thread = new MyThread() 时 其实已经有了父线程的值
+	// InheritableThreadLocal 重写了 ThreadLocal 的 getMap，获取的其实是 复制好的inheritableThreadLocals
+	// 因此 子线程能获取到父线程set的值
 	public static final InheritableThreadLocal<String> contextHolder = new InheritableThreadLocal<String>();
 
 
